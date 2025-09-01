@@ -1,0 +1,141 @@
+const zumbido = async function() {
+  const formContent = document.querySelector('.form-content');
+  const formBody = document.querySelector('.form-content > .form-body');
+  const submitButton = document.querySelector('.form-body > .btn');
+  const aiVoiceInput = document.querySelector('.form-body > .inputContent');
+  const contentTypeMessage = document.querySelector('.form-body > .contentTypeMessage');
+  //const paymentTypeButtons = document.querySelector('.form-body > .payment-type-buttons');
+
+  formBody.removeChild(submitButton);
+  formBody.removeChild(aiVoiceInput);
+  formBody.removeChild(contentTypeMessage);
+  //formBody.removeChild(paymentTypeButtons);
+
+  const textMinAmountLabel = Array.from(document.querySelectorAll('#minDonate')).find(el => getComputedStyle(el).display !== 'none');
+  if (textMinAmountLabel) {
+    textMinAmountLabel.style.display = 'none';
+    textMinAmountLabel.id = '';
+  }
+
+  const voiceMinAmountLabel = Array.from(document.querySelectorAll('#minDonate')).find(el => getComputedStyle(el).display === 'none');
+  if (voiceMinAmountLabel) {
+    voiceMinAmountLabel.style.display = 'block';
+  }
+
+  const selectAudioButton = document.createElement('button');
+  selectAudioButton.textContent = 'Select File';
+  selectAudioButton.type = 'button';
+  selectAudioButton.className = 'btn btn-primary';
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.style.display = 'none'; // hide it
+  fileInput.onchange = () => {
+    if (fileInput.files.length !== 1) {
+      selectAudioButton.textContent = 'Select File';
+      return;
+    }
+    selectAudioButton.textContent = 'File selected';
+  }
+
+  selectAudioButton.onclick = () => fileInput.click();
+
+  formBody.appendChild(selectAudioButton);
+
+  const donateButton = document.createElement('button');
+  donateButton.textContent = 'Continuar';
+  donateButton.type = 'button';
+  donateButton.className = 'btn btn-primary';
+  donateButton.style = 'margin-top: 12px !important; background-color: rgb(95, 46, 234) !important;'
+  donateButton.onclick = async () => {
+    selectAudioButton.disabled = true;
+    selectAudioButton.textContent = "Uploading...";
+    donateButton.disabled = true;
+    donateButton.textContent = "Uploading audio file...";
+
+    if (!fileInput.files.length) {
+      alert('Please select a file first');
+      return;
+    }
+
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const fileResponse = await fetch(
+      'https://app.pixgg.com/api/Files/upload-file',
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+
+    if (!fileResponse.ok) {
+      alert(fileResponse.statusText);
+	console.log("fileResponse="+fileResponse);
+      return;
+    }
+
+    const result = await fileResponse.json();
+
+    selectAudioButton.textContent = `File uploaded! (${result.fileId})`;
+    donateButton.textContent = "Generating checkout...";
+
+    const nicknameInput = document.querySelector('[placeholder="Seu nick do chat"]');
+    const messageInput = document.querySelector('[placeholder="Mensagem"]');
+    const valueInput = document.querySelector(".priceInputContent > input[type=tel]")
+
+    const streamerName = window.location.pathname.split('/')[1];
+    const streamerData = await fetch(`https://events.pixgg.com.br/checkouts?streamerUsername=${streamerName}`).then(res => res.json());
+    const streamerId = streamerData.id;
+	
+	const finalBodyJson = JSON.stringify({
+          streamerId: streamerId,	
+          donatorNickname: nicknameInput.value,
+          donatorMessage: messageInput ? messageInput.value : "x",
+          donatorAmount: parseFloat(valueInput.value.replaceAll(",", ".")) || parseFloat(streamerData.minimumAudioDonateAmount),
+          minimumDonateAmount: null,
+          fileId: result.fileId,
+          country: "Brazil",
+          cryptoNetwork: "ETH",
+          cryptoCoin: null,
+        });
+
+
+
+
+
+
+	console.log(finalBodyJson);
+
+    const checkoutResponse = await fetch(
+      `https://app.pixgg.com/checkouts`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: finalBodyJson,
+      }
+    );
+
+    if (!checkoutResponse.ok) {
+      alert(checkoutResponse.statusText);
+      return;
+    }
+
+    donateButton.textContent = "Checkout successful!";
+
+    const checkoutResult = await checkoutResponse.json();
+
+    formBody.remove();
+
+    const qrCodeEl = document.createElement('div');
+    qrCodeEl.style = 'margin-left: auto; margin-right: auto; width: 256px !important; height: 256px !important;';
+    document.querySelector('.form-content').appendChild(qrCodeEl);
+    new QRCode(qrCodeEl, checkoutResult.pixUrl);
+  };
+
+  
+  formBody.appendChild(donateButton);
+}();
